@@ -1,59 +1,1 @@
-import gradio
-from pyChatGPT import ChatGPT
-from pprint import pprint
-import py_secrets
-import whisper
-import gradio as gr
-import time
-import warnings
-
-# WHISPER
-model = whisper.load_model("base")
-model.device
-
-# Transcribe Function
-# This function takes in the audio input and converts to text. This text is provided to chatgpt for further processes
-def create_chatGPT_api():
-    # CHATGPT
-    session_token = py_secrets.session_token
-    gpt_api = ChatGPT(session_token)
-    return gpt_api
-
-
-def transcribe(audio):
-    # Load audio and pad/trim it to fit 30 sec.
-    audio = whisper.load_audio(audio)
-    audio = whisper.pad_or_trim(audio)
-
-    # make log-Mel spectrogram and move to the same device as the odel
-    mel = whisper.log_mel_spectrogram(audio).to(model.device)
-
-    # Detect the spoken language
-    _, probs = model.detect_language(mel)
-
-    # decode the audio
-    options = whisper.DecodingOptions()
-    result= whisper.decode(model,mel,options)
-    result_text = result.text
-
-    # passing the generated text to Audio
-    gpt_api = create_chatGPT_api()
-    resp = gpt_api.send_message(result_text)
-    out_result = resp('message')
-
-    return [result_text,out_result]
-
-output_1 = gr.Textbox(label="Speech to Text")
-output_2 = gr.Textbox(label="ChatGPT Output")
-
-gr.Interface(
-    title = "Integrating OpenAI Whisper and ChatGPT",
-    fn = transcribe,
-    inputs = [
-        gr.inputs.Audio(source='microphone',type ='filepath')
-    ],
-    outputs = [
-        output_1, output_2
-    ],
-    live =True).launch()
-
+import gradio as grimport torchimport whisperfrom diffusers import StableDiffusionPipeline, EulerDiscreteSchedulerfrom pyChatGPT import ChatGPTimport warningswarnings.filterwarnings("ignore")import py_secretsimport logginglogging.basicConfig(    level= logging.DEBUG,    format="[%(asctime)s: %(levelname)s: %(module)s]: %(message)s",    filemode ="a")logging.info("Initiating the model by downloading the submodels >>>>>>>>>")# WHISPERlogging.info("Downloading the <OPENAI WHISPER> model  >>>>>>>>>")whisper_model = whisper.load_model("base")logging.info("Loading the Whisper model --> SUCCESS >>>>>>>>>")logging.info("Moved the model to the GPU")whisper_model.device# STABLE DIFFUSIONlogging.info("Importing Stable Diffusion Pretrained model  >>>>>>>>>")model_id = "stabilityai/stable-diffusion-2"logging.info("Using the Scheduler: Euler Discrete scheduler   >>>>>>>>>")scheduler = EulerDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")logging.info("Importing Stable Diffusion pretrained model    >>>>>>>>>")pipe = StableDiffusionPipeline.from_pretrained(model_id, scheduler=scheduler,                                               torch_dtype=torch.float32)pipe = pipe.to("mps")logging.info("Moved the pipeline to Apple Silicon GPU 'mps'  >>>>>>>>>")pipe.enable_attention_slicing()def create_chatGPT_api():    # CHATGPT    logging.info("Fetching the ChatGPT session token >>>>>>>>>")    session_token = py_secrets.gpt_session_token    logging.info("Creating  API connection with the fetched token >>>>>>>>>")    gpt_api = ChatGPT(session_token)    return gpt_api# Transcribe Function# This function takes in the audio input and converts to text. This text is provided to chatgpt for further processesdef transcribe(audio):    # Load audio and pad/trim it to fit 30 sec.    logging.info("Load audio and pad/trim it to fit 30 sec. >>>>>>>>>")    audio = whisper.load_audio(audio)    audio = whisper.pad_or_trim(audio)    # make log-Mel spectrogram and move to the same device as the model    logging.info("make log-Mel spectrogram and moving to the same device as the model>>>>>>>>>")    mel = whisper.log_mel_spectrogram(audio).to(whisper_model.device)    # Detect the spoken language    logging.info("Detecting the language of the audio >>>>>>>>>")    _, probs = whisper_model.detect_language(mel)    # decode the audio    logging.info("Decoding the audio >>>>>>>>>")    options = whisper.DecodingOptions(fp16=False)    result = whisper.decode(whisper_model, mel, options)    logging.info("Decoded the audio of the audio >>>>>>>>>")    result_text = result.text    # passing the generated text to Audio    logging.info("Passing the result text to ChatGPT model >>>>>>>>>")    gpt_api = create_chatGPT_api()    resp = gpt_api.send_message(result_text)    logging.debug("Extracted the response from the whisper output >>>>>>>>>")    out_result = resp['message']    logging.info("Passing the result text<Prompt> to Stable Diffusion model >>>>>>>>>")    out_image = pipe(result_text, height=512, width=512).images[0]    logging.info("Creating a Output Image from Stable Diffusion: SUCCESS >>>>>>>>>")    return [result_text, out_result, out_image]output_1 = gr.Textbox(label="Speech to Text")output_2 = gr.Textbox(label="ChatGPT Output")output_3 = gr.Image(label="Diffusion Output")gr.Interface(    title="Integrating Whisper, ChatGPT and Stable Diffusion",    fn=transcribe,    inputs=[        gr.inputs.Audio(source='microphone', type='filepath')    ],    outputs=[        output_1, output_2, output_3    ],    live=True).launch()
